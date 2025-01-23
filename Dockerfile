@@ -8,9 +8,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Erstellen Sie das Verzeichnis für die Schriftarten und kopieren Sie die Schriftartdatei
-RUN mkdir -p fonts
-COPY fonts/RobotoSlab-Regular.ttf fonts/
+# Kopiere den gesamten Fonts-Ordner
+COPY fonts/ /app/fonts/
 
 # Kopieren Sie den Rest des Anwendungscodes
 COPY main.py .
