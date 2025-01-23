@@ -1,8 +1,13 @@
 steps:
+  # Docker-Image erstellen
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'gcr.io/$PROJECT_ID/imagegen', '.']
+
+  # Docker-Image in Container Registry hochladen
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/imagegen']
+
+  # Cloud Run Deployment starten
   - name: 'gcr.io/cloud-builders/gcloud'
     args:
       - 'run'
@@ -13,5 +18,6 @@ steps:
       - '--region=europe-west1'
       - '--allow-unauthenticated'
       - '--set-env-vars=API_KEY=MeinSuperSichererAPIKey'
+
 images:
   - 'gcr.io/$PROJECT_ID/imagegen'
