@@ -20,28 +20,44 @@ def require_api_key(f):
 @require_api_key
 def process_image():
     logging.info(f"Current working directory: {os.getcwd()}")
-    logging.info(f"Contents of fonts directory: {os.listdir('fonts')}")
-    
+
+    # Prüfe, ob das fonts-Verzeichnis existiert
+    fonts_dir = 'fonts'
+    if os.path.exists(fonts_dir):
+        logging.info(f"Contents of fonts directory: {os.listdir(fonts_dir)}")
+    else:
+        logging.error("Fonts directory does not exist!")
+
     try:
+        # Eingabedaten
         file = request.files['image']
         text = request.form.get('text', 'Kein Text angegeben')
         font_name = request.form.get('font', 'RobotoSlab-Regular.ttf')
-        font_path = os.path.join('fonts', font_name)
-        
+
+        # Falls der Font-Name keine Endung hat, ergänze ".ttf"
+        if not font_name.endswith(".ttf"):
+            font_name += ".ttf"
+
+        font_path = os.path.join(fonts_dir, font_name)
+
+        # Prüfen, ob der Font existiert
         if not os.path.exists(font_path):
             logging.error(f"Schriftart {font_path} nicht gefunden.")
             return jsonify({'error': f'Schriftart {font_name} nicht gefunden.'}), 400
-        
+
+        # Textfeld-Parameter
         text_field_width = int(request.form.get('text_field_width', 800))
         text_field_height = int(request.form.get('text_field_height', 200))
         text_field_x = int(request.form.get('text_field_x', 0))
         text_field_y = int(request.form.get('text_field_y', 0))
         font_color = request.form.get('font_color', 'black')
-        
+
+        # Bild öffnen
         image = Image.open(file)
         draw = ImageDraw.Draw(image)
         max_font_size, font_size = 100, 100
-        
+
+        # Dynamische Schriftgrößenanpassung
         while font_size > 0:
             font = ImageFont.truetype(font_path, font_size)
             text_bbox = draw.textbbox((0, 0), text, font=font)
@@ -50,19 +66,24 @@ def process_image():
             if text_width <= text_field_width and text_height <= text_field_height:
                 break
             font_size -= 1
-        
+
         if font_size == 0:
+            logging.error("Text passt nicht in das vorgesehene Feld.")
             return jsonify({'error': 'Text passt nicht in das vorgesehene Feld.'}), 400
-        
+
+        # Zentrierte Position berechnen
         x_offset = text_field_x + (text_field_width - text_width) // 2
         y_offset = text_field_y + (text_field_height - text_height) // 2
-        
+
+        # Text auf das Bild zeichnen
         draw.text((x_offset, y_offset), text, fill=font_color, font=font)
-        logging.info(f"Text gezeichnet: '{text}' mit Schriftart {font_name}")
-        
+        logging.info(f"Text gezeichnet: '{text}' mit Schriftart {font_name} auf Position ({x_offset}, {y_offset})")
+
+        # Bild speichern und senden
         output_path = 'output_image.png'
         image.save(output_path, format='PNG')
         return send_file(output_path, mimetype='image/png')
+
     except Exception as e:
         logging.error(f"Fehler bei der Bildverarbeitung: {str(e)}")
         return jsonify({'error': str(e)}), 400
