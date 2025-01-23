@@ -19,11 +19,14 @@ def require_api_key(f):
 @app.route('/process_image', methods=['POST'])
 @require_api_key
 def process_image():
+    logging.info(f"Current working directory: {os.getcwd()}")
+    logging.info(f"Contents of fonts directory: {os.listdir('fonts')}")
+    
     try:
         file = request.files['image']
         text = request.form.get('text', 'Kein Text angegeben')
         font_name = request.form.get('font', 'RobotoSlab-Regular.ttf')
-        font_path = os.path.join(os.path.dirname(__file__), 'fonts', font_name)
+        font_path = os.path.join('fonts', font_name)
         
         if not os.path.exists(font_path):
             logging.error(f"Schriftart {font_path} nicht gefunden.")
