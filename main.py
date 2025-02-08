@@ -52,8 +52,15 @@ def process_image():
         text_field_y = int(request.form.get('text_field_y', 0))
         font_color = request.form.get('font_color', 'black')
 
+        # **NEU: Overlay-Parameter**
+        overlay_file = request.files.get('overlay_image')
+        overlay_x = int(request.form.get('overlay_x', 0))
+        overlay_y = int(request.form.get('overlay_y', 0))
+        overlay_width = int(request.form.get('overlay_width', 100))
+        overlay_height = int(request.form.get('overlay_height', 100))
+
         # Bild öffnen
-        image = Image.open(file)
+        image = Image.open(file).convert("RGBA")
         draw = ImageDraw.Draw(image)
         max_font_size, font_size = 100, 100
 
@@ -78,6 +85,13 @@ def process_image():
         # Text auf das Bild zeichnen
         draw.text((x_offset, y_offset), text, fill=font_color, font=font)
         logging.info(f"Text gezeichnet: '{text}' mit Schriftart {font_name} auf Position ({x_offset}, {y_offset})")
+
+        # **NEU: Overlay hinzufügen**
+        if overlay_file:
+            overlay = Image.open(overlay_file).convert("RGBA")
+            overlay = overlay.resize((overlay_width, overlay_height))
+            image.paste(overlay, (overlay_x, overlay_y), overlay)
+            logging.info(f"Overlay hinzugefügt auf Position ({overlay_x}, {overlay_y}) mit Größe {overlay_width}x{overlay_height}")
 
         # Bild speichern und senden
         output_path = 'output_image.png'
