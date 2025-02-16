@@ -40,6 +40,7 @@ def process_image():
         overlay_y = int(request.form.get('overlay_y', 0))
         overlay_width = int(request.form.get('overlay_width', 100))
         overlay_height = int(request.form.get('overlay_height', 100))
+        overlay_opacity = int(request.form.get('overlay_opacity', 255))  # Neu: Transparenz (0-255)
 
         # **📌 BORDER PARAMETER**
         overlay_border_color = request.form.get('overlay_border_color', '#000000')
@@ -66,11 +67,15 @@ def process_image():
             overlay = Image.open(overlay_file).convert("RGBA")
             overlay = resize_keep_aspect_ratio(overlay, overlay_width, overlay_height)
 
+            # **🟢 TRANSPARENZ ANWENDEN**
+            if overlay_opacity < 255:
+                overlay = apply_transparency(overlay, overlay_opacity)
+
             # **🖌 RAHMEN UM OVERLAY**
             overlay = add_border_to_overlay(overlay, overlay_border_thickness, overlay_border_color, overlay_corner_radius)
 
             image.paste(overlay, (overlay_x, overlay_y), overlay)
-            logging.info("✅ Overlay erfolgreich hinzugefügt.")
+            logging.info(f"✅ Overlay erfolgreich hinzugefügt mit {overlay_opacity} Opazität.")
 
         # 📤 **BILD SPEICHERN & SENDEN**
         output_path = 'output_image.png'
@@ -89,6 +94,15 @@ def resize_keep_aspect_ratio(image, max_width, max_height):
     ratio = min(max_width / image.width, max_height / image.height)
     new_size = (int(image.width * ratio), int(image.height * ratio))
     return image.resize(new_size, Image.LANCZOS)
+
+def apply_transparency(image, opacity):
+    """ Setzt die Transparenz (0 = komplett unsichtbar, 255 = komplett sichtbar). """
+    if image.mode != "RGBA":
+        image = image.convert("RGBA")
+    
+    alpha = image.split()[3].point(lambda p: p * (opacity / 255))
+    image.putalpha(alpha)
+    return image
 
 def add_border_to_overlay(overlay, thickness, color, radius):
     """ Erstellt einen mittig ausgerichteten Border um das Overlay-Bild herum. """
