@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, send_file, abort
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageColor
 from functools import wraps
 import os, logging
 
@@ -19,88 +19,102 @@ def require_api_key(f):
 @app.route('/process_image', methods=['POST'])
 @require_api_key
 def process_image():
-    logging.info(f"Current working directory: {os.getcwd()}")
-
-    # Prüfe, ob das fonts-Verzeichnis existiert
-    fonts_dir = 'fonts'
-    if os.path.exists(fonts_dir):
-        logging.info(f"Contents of fonts directory: {os.listdir(fonts_dir)}")
-    else:
-        logging.error("Fonts directory does not exist!")
-
     try:
-        # Eingabedaten
+        logging.info("🚀 API-Request erhalten.")
+
+        # **📥 BILDER & TEXTE LADEN**
         file = request.files['image']
+        overlay_file = request.files.get('overlay_image')
         text = request.form.get('text', 'Kein Text angegeben')
         font_name = request.form.get('font', 'RobotoSlab-Regular.ttf')
+        font_color = request.form.get('font_color', '#000000')
 
-        # Falls der Font-Name keine Endung hat, ergänze ".ttf"
-        if not font_name.endswith(".ttf"):
-            font_name += ".ttf"
-
-        font_path = os.path.join(fonts_dir, font_name)
-
-        # Prüfen, ob der Font existiert
-        if not os.path.exists(font_path):
-            logging.error(f"Schriftart {font_path} nicht gefunden.")
-            return jsonify({'error': f'Schriftart {font_name} nicht gefunden.'}), 400
-
-        # Textfeld-Parameter
-        text_field_width = int(request.form.get('text_field_width', 800))
-        text_field_height = int(request.form.get('text_field_height', 200))
+        # **📌 TEXTFELD PARAMETER**
         text_field_x = int(request.form.get('text_field_x', 0))
         text_field_y = int(request.form.get('text_field_y', 0))
-        font_color = request.form.get('font_color', 'black')
+        text_field_width = int(request.form.get('text_field_width', 800))
+        text_field_height = int(request.form.get('text_field_height', 200))
 
-        # **NEU: Overlay-Parameter**
-        overlay_file = request.files.get('overlay_image')
+        # **📌 OVERLAY PARAMETER**
         overlay_x = int(request.form.get('overlay_x', 0))
         overlay_y = int(request.form.get('overlay_y', 0))
         overlay_width = int(request.form.get('overlay_width', 100))
         overlay_height = int(request.form.get('overlay_height', 100))
 
-        # Bild öffnen
+        # **📌 BORDER PARAMETER**
+        overlay_border_color = request.form.get('overlay_border_color', '#000000')
+        overlay_border_thickness = int(request.form.get('overlay_border_thickness', 5))
+        overlay_corner_radius = int(request.form.get('overlay_corner_radius', 20))
+
+        # 🖼 **HINTERGRUNDBILD LADEN**
         image = Image.open(file).convert("RGBA")
         draw = ImageDraw.Draw(image)
-        max_font_size, font_size = 100, 100
 
-        # Dynamische Schriftgrößenanpassung
-        while font_size > 0:
-            font = ImageFont.truetype(font_path, font_size)
-            text_bbox = draw.textbbox((0, 0), text, font=font)
-            text_width = text_bbox[2] - text_bbox[0]
-            text_height = text_bbox[3] - text_bbox[1]
-            if text_width <= text_field_width and text_height <= text_field_height:
-                break
-            font_size -= 1
+        # **📌 SCHRIFT PRÜFEN**
+        fonts_dir = 'fonts'
+        font_path = os.path.join(fonts_dir, font_name)
+        if not os.path.exists(font_path):
+            return jsonify({'error': f'Schriftart {font_name} nicht gefunden.'}), 400
 
-        if font_size == 0:
-            logging.error("Text passt nicht in das vorgesehene Feld.")
-            return jsonify({'error': 'Text passt nicht in das vorgesehene Feld.'}), 400
+        # 🖍 **TEXT ZEICHNEN**
+        font = ImageFont.truetype(font_path, 100)
+        draw.text((text_field_x, text_field_y), text, fill=font_color, font=font)
+        logging.info("✅ Text erfolgreich gezeichnet.")
 
-        # Zentrierte Position berechnen
-        x_offset = text_field_x + (text_field_width - text_width) // 2
-        y_offset = text_field_y + (text_field_height - text_height) // 2
-
-        # Text auf das Bild zeichnen
-        draw.text((x_offset, y_offset), text, fill=font_color, font=font)
-        logging.info(f"Text gezeichnet: '{text}' mit Schriftart {font_name} auf Position ({x_offset}, {y_offset})")
-
-        # **NEU: Overlay hinzufügen**
+        # 🖼 **OVERLAY HANDHABEN**
         if overlay_file:
             overlay = Image.open(overlay_file).convert("RGBA")
-            overlay = overlay.resize((overlay_width, overlay_height))
-            image.paste(overlay, (overlay_x, overlay_y), overlay)
-            logging.info(f"Overlay hinzugefügt auf Position ({overlay_x}, {overlay_y}) mit Größe {overlay_width}x{overlay_height}")
+            overlay = resize_keep_aspect_ratio(overlay, overlay_width, overlay_height)
 
-        # Bild speichern und senden
+            # **🖌 RAHMEN UM OVERLAY**
+            overlay = add_border_to_overlay(overlay, overlay_border_thickness, overlay_border_color, overlay_corner_radius)
+
+            image.paste(overlay, (overlay_x, overlay_y), overlay)
+            logging.info("✅ Overlay erfolgreich hinzugefügt.")
+
+        # 📤 **BILD SPEICHERN & SENDEN**
         output_path = 'output_image.png'
         image.save(output_path, format='PNG')
+        logging.info("✅ Bild erfolgreich erstellt!")
         return send_file(output_path, mimetype='image/png')
 
     except Exception as e:
         logging.error(f"Fehler bei der Bildverarbeitung: {str(e)}")
         return jsonify({'error': str(e)}), 400
+
+# **📌 FUNKTIONEN FÜR BILDVERARBEITUNG**
+
+def resize_keep_aspect_ratio(image, max_width, max_height):
+    """ Skaliert das Bild proportional auf die maximale Größe. """
+    ratio = min(max_width / image.width, max_height / image.height)
+    new_size = (int(image.width * ratio), int(image.height * ratio))
+    return image.resize(new_size, Image.LANCZOS)
+
+def add_border_to_overlay(overlay, thickness, color, radius):
+    """ Erstellt einen mittig ausgerichteten Border um das Overlay-Bild herum. """
+    # **🚀 Exakte Originalgröße beibehalten**
+    new_size = (
+        overlay.width + 2 * thickness,  
+        overlay.height + 2 * thickness  
+    )
+
+    # Neues Bild für den Border
+    border_layer = Image.new("RGBA", new_size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(border_layer)
+
+    # **🔹 Rahmen exakt um das Overlay setzen**
+    draw.rounded_rectangle(
+        [(thickness / 2, thickness / 2),  
+         (new_size[0] - thickness / 2 - 1, new_size[1] - thickness / 2 - 1)],  
+        radius=radius + (thickness / 2),  
+        outline=color,
+        width=thickness
+    )
+
+    # **🎯 Overlay exakt in die Mitte setzen**
+    border_layer.paste(overlay, (thickness, thickness), overlay)
+
+    return border_layer
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=True)
