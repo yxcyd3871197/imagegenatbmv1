@@ -1,4 +1,3 @@
-Example API Form-data Request: 
 POST http://localhost:8080/process_image
 Headers:
     x-api-key: IhrGeheimerAPIKey
