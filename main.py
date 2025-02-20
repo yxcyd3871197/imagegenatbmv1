@@ -4,7 +4,9 @@ from functools import wraps
 import os, logging
 
 app = Flask(__name__)
-API_KEY = os.getenv('API_KEY', 'IhrGeheimerAPIKey')
+API_KEY = os.getenv('API_KEY')
+if not API_KEY:
+    raise ValueError("API_KEY environment variable not set")
 logging.basicConfig(level=logging.INFO)
 
 def require_api_key(f):
@@ -28,7 +30,10 @@ def process_image():
         text = request.form.get('text', 'Kein Text angegeben')
         font_name = request.form.get('font', 'RobotoSlab-Regular.ttf')
         font_color = request.form.get('font_color', '#000000')
-
+        font_size = request.form.get('font_size')
+        text_field_border_color = request.form.get('text_field_border_color', '#00000000') # Transparent default
+        text_field_border_width = int(request.form.get('text_field_border_width', 0))
+        text_align = request.form.get('text_align', 'left')
         # **📌 TEXTFELD PARAMETER**
         text_field_x = int(request.form.get('text_field_x', 0))
         text_field_y = int(request.form.get('text_field_y', 0))
@@ -58,10 +63,56 @@ def process_image():
             return jsonify({'error': f'Schriftart {font_name} nicht gefunden.'}), 400
 
         # 🖍 **TEXT ZEICHNEN**
-        font = ImageFont.truetype(font_path, 100)
-        draw.text((text_field_x, text_field_y), text, fill=font_color, font=font)
-        logging.info("✅ Text erfolgreich gezeichnet.")
+        if font_size:
+            font = ImageFont.truetype(font_path, int(font_size))
+        else:
+            # Autofit Textfeld
+            font_size = 100  # Startgröße
+            font = ImageFont.truetype(font_path, font_size)
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            while text_width > text_field_width or text_height > text_field_height:
+                font_size -= 1
+                font = ImageFont.truetype(font_path, font_size)
+                bbox = draw.textbbox((0, 0), text, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                
+        # Draw text field border
+        if text_field_border_width > 0:
+            draw.rectangle(
+                [(text_field_x, text_field_y), (text_field_x + text_field_width, text_field_y + text_field_height)],
+                outline=text_field_border_color,
+                width=text_field_border_width
+            )
 
+        if font_size:
+            font = ImageFont.truetype(font_path, int(font_size))
+        else:
+            # Autofit Textfeld
+            font_size = 100  # Startgröße
+            font = ImageFont.truetype(font_path, font_size)
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            while text_width > text_field_width or text_height > text_field_height:
+                font_size -= 1
+                font = ImageFont.truetype(font_path, font_size)
+                bbox = draw.textbbox((0, 0), text, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+
+        if text_align == 'center':
+            text_x = text_field_x + (text_field_width - text_width) / 2
+        elif text_align == 'right':
+            text_x = text_field_x + (text_field_width - text_width)
+        else:  # left
+            text_x = text_field_x
+
+        draw.text((text_x, text_field_y), text, fill=font_color, font=font)
+
+        logging.info("✅ Text erfolgreich gezeichnet.")
         # 🖼 **OVERLAY HANDHABEN**
         if overlay_file:
             overlay = Image.open(overlay_file).convert("RGBA")
@@ -86,8 +137,8 @@ def process_image():
     except Exception as e:
         logging.error(f"Fehler bei der Bildverarbeitung: {str(e)}")
         return jsonify({'error': str(e)}), 400
-
 # **📌 FUNKTIONEN FÜR BILDVERARBEITUNG**
+
 
 def resize_keep_aspect_ratio(image, max_width, max_height):
     """ Skaliert das Bild proportional auf die maximale Größe. """
